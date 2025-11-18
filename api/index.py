@@ -206,9 +206,17 @@ async def remove_background(file: UploadFile = File(...)):
             from rembg import remove
             from PIL import Image
             import io
+            import os
             
             print("Starting background removal with rembg...")
             print(f"Input image size: {len(image_bytes)} bytes")
+            
+            # Check if model is already downloaded
+            model_path = os.path.expanduser("~/.u2net/u2net.onnx")
+            if os.path.exists(model_path):
+                print(f"rembg model found at: {model_path}")
+            else:
+                print("rembg model will be downloaded (first request may be slow)")
             
             # Resize image if too large to reduce memory usage
             # Max dimension: 800px (daha agresif resize)

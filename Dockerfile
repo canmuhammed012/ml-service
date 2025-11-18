@@ -13,6 +13,10 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Preload rembg models during build
+COPY preload_models.py .
+RUN python preload_models.py || echo "Model preload failed, will download on first request"
+
 # Copy application code
 COPY api/ ./api/
 
