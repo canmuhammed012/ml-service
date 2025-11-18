@@ -204,8 +204,34 @@ async def remove_background(file: UploadFile = File(...)):
         # Use rembg for background removal
         try:
             from rembg import remove
+            from PIL import Image
+            import io
             
             print("Starting background removal with rembg...")
+            print(f"Input image size: {len(image_bytes)} bytes")
+            
+            # Resize image if too large to reduce memory usage
+            # Max dimension: 800px (daha agresif resize)
+            img = Image.open(io.BytesIO(image_bytes))
+            original_size = img.size
+            max_dimension = 800  # 1024'ten 800'e düşürdük
+            
+            if max(img.size) > max_dimension:
+                # Calculate new size maintaining aspect ratio
+                ratio = max_dimension / max(img.size)
+                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                print(f"Resized image from {original_size} to {new_size} to reduce memory usage")
+                
+                # Convert back to bytes
+                img_buffer = io.BytesIO()
+                # JPEG format (rembg her formatı kabul eder)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.save(img_buffer, format='JPEG', quality=80, optimize=True)
+                image_bytes = img_buffer.getvalue()
+                print(f"Resized image size: {len(image_bytes)} bytes (reduced from original)")
+            
             # Remove background
             output_bytes = remove(image_bytes)
             print(f"Background removed, output size: {len(output_bytes)} bytes")
@@ -223,6 +249,20 @@ async def remove_background(file: UploadFile = File(...)):
         except ImportError as e:
             # rembg not available
             print(f"rembg not available: {e}")
+            print(f"ImportError details: {type(e).__name__}: {str(e)}")
+            # Try to check if rembg is installed
+            try:
+                import sys
+                import subprocess
+                result = subprocess.run([sys.executable, '-m', 'pip', 'list'], 
+                                      capture_output=True, text=True, timeout=5)
+                if 'rembg' in result.stdout:
+                    print("rembg is in pip list but import failed")
+                else:
+                    print("rembg is NOT in pip list")
+            except Exception as check_error:
+                print(f"Could not check pip list: {check_error}")
+            
             # Fallback: return original
             from PIL import Image
             import io
@@ -234,7 +274,7 @@ async def remove_background(file: UploadFile = File(...)):
             output_bytes = output_buffer.getvalue()
             return {
                 "success": False,
-                "error": "rembg not available",
+                "error": f"rembg not available: {str(e)}",
                 "note": "Returning original image",
                 "image_base64": base64.b64encode(output_bytes).decode('utf-8')
             }
