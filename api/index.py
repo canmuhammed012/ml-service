@@ -201,79 +201,36 @@ async def remove_background(file: UploadFile = File(...)):
     try:
         image_bytes = await file.read()
         
-        # Use rembg for background removal
+        # Background removal - rembg disabled on Render free tier (memory limit)
+        # TODO: Enable when upgrading to Render Starter Plan ($7/ay) or Railway
+        print("Background removal: rembg disabled on Render free tier (512MB limit)")
+        print("Returning original image. To enable background removal, upgrade to Render Starter Plan.")
+        
+        # Return original image as PNG (transparent background simulation)
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(image_bytes))
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+        output_buffer = io.BytesIO()
+        img.save(output_buffer, format='PNG')
+        output_bytes = output_buffer.getvalue()
+        
+        return {
+            "success": False,
+            "error": "Background removal disabled",
+            "note": "rembg requires more memory than Render free tier allows. Upgrade to Render Starter Plan ($7/ay) or use Railway.",
+            "image_base64": base64.b64encode(output_bytes).decode('utf-8')
+        }
+        
+    except Exception as e:
+        print(f"Background removal error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback: return original
+        from PIL import Image
+        import io
         try:
-            from rembg import remove
-            from PIL import Image
-            import io
-            import os
-            
-            print("Starting background removal with rembg...")
-            print(f"Input image size: {len(image_bytes)} bytes")
-            
-            # Check if model is already downloaded
-            model_path = os.path.expanduser("~/.u2net/u2net.onnx")
-            if os.path.exists(model_path):
-                print(f"rembg model found at: {model_path}")
-            else:
-                print("rembg model will be downloaded (first request may be slow)")
-            
-            # Resize image if too large to reduce memory usage
-            # Max dimension: 800px (daha agresif resize)
-            img = Image.open(io.BytesIO(image_bytes))
-            original_size = img.size
-            max_dimension = 800  # 1024'ten 800'e düşürdük
-            
-            if max(img.size) > max_dimension:
-                # Calculate new size maintaining aspect ratio
-                ratio = max_dimension / max(img.size)
-                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-                img = img.resize(new_size, Image.Resampling.LANCZOS)
-                print(f"Resized image from {original_size} to {new_size} to reduce memory usage")
-                
-                # Convert back to bytes
-                img_buffer = io.BytesIO()
-                # JPEG format (rembg her formatı kabul eder)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                img.save(img_buffer, format='JPEG', quality=80, optimize=True)
-                image_bytes = img_buffer.getvalue()
-                print(f"Resized image size: {len(image_bytes)} bytes (reduced from original)")
-            
-            # Remove background
-            output_bytes = remove(image_bytes)
-            print(f"Background removed, output size: {len(output_bytes)} bytes")
-            
-            # Convert to base64 for response
-            output_base64 = base64.b64encode(output_bytes).decode('utf-8')
-            
-            return {
-                "success": True,
-                "image_base64": output_base64,
-                "format": "png",
-                "size": len(output_bytes)
-            }
-            
-        except ImportError as e:
-            # rembg not available
-            print(f"rembg not available: {e}")
-            print(f"ImportError details: {type(e).__name__}: {str(e)}")
-            # Try to check if rembg is installed
-            try:
-                import sys
-                import subprocess
-                result = subprocess.run([sys.executable, '-m', 'pip', 'list'], 
-                                      capture_output=True, text=True, timeout=5)
-                if 'rembg' in result.stdout:
-                    print("rembg is in pip list but import failed")
-                else:
-                    print("rembg is NOT in pip list")
-            except Exception as check_error:
-                print(f"Could not check pip list: {check_error}")
-            
-            # Fallback: return original
-            from PIL import Image
-            import io
             img = Image.open(io.BytesIO(image_bytes))
             if img.mode != 'RGBA':
                 img = img.convert('RGBA')
@@ -282,26 +239,16 @@ async def remove_background(file: UploadFile = File(...)):
             output_bytes = output_buffer.getvalue()
             return {
                 "success": False,
-                "error": f"rembg not available: {str(e)}",
-                "note": "Returning original image",
+                "error": str(e),
+                "note": "Returning original image due to error",
                 "image_base64": base64.b64encode(output_bytes).decode('utf-8')
             }
-        except Exception as e:
-            print(f"Background removal error: {e}")
-            # Fallback: return original
+        except:
             return {
                 "success": False,
                 "error": str(e),
-                "note": "Returning original image due to error",
-                "image_base64": base64.b64encode(image_bytes).decode('utf-8')
+                "image_base64": None
             }
-    except Exception as e:
-        print(f"Background removal error: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "image_base64": None
-        }
 
 
 @app.post("/process-avatar")
